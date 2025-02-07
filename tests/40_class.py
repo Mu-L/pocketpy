@@ -77,6 +77,24 @@ assert isinstance(d, A)
 assert isinstance(object, object)
 assert isinstance(type, object)
 
+assert isinstance(1, (float, int))
+assert isinstance(1, (float, object))
+assert not isinstance(1, (float, str))
+assert isinstance(object, (int, type, float))
+assert not isinstance(object, (int, float, str))
+
+try:
+    isinstance(1, (1, 2))
+    exit(1)
+except TypeError:
+    pass
+
+try:
+    isinstance(1, 1)
+    exit(1)
+except TypeError:
+    pass
+
 class A:
     a = 1
     b = 2
@@ -88,14 +106,27 @@ class B(A):
     b = 3
     c = 4
 
-# assert B.a == 1  ...bug here
 assert B.b == 3
 assert B.c == 4
 
-import c
+assert B.a == 1
 
-class A(c.void_p):
-    pass
-    
-a = A()
-assert repr(a).startswith('<void* at')
+class A:
+    x = 1
+    x = x + 1
+    y = 1
+    z = x + y
+
+assert A.x == 2
+assert A.y == 1
+assert A.z == 3
+
+class MyClass:
+    a = 1,2,3
+    b, c = 1, 2
+    d = b + c
+
+assert MyClass.a == (1, 2, 3)
+assert MyClass.b == 1
+assert MyClass.c == 2
+assert MyClass.d == 3

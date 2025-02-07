@@ -1,6 +1,7 @@
--xc++
 -Wall
 -W*
--std=c++17
--stdlib=libc++
+-xc
+-std=c11
 -Iinclude/
+-I3rd/lz4/
+-I3rd/libhv/include/

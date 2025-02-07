@@ -1,0 +1,7 @@
+{
+    "stubPath": "include/typings",
+    "reportMissingModuleSource": "none",
+    "reportArgumentType": "none",
+    "reportWildcardImportFromLibrary": "none",
+    "pythonVersion": "3.12"
+}

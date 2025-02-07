@@ -1,115 +1,159 @@
-import os
-
-os.system("python3 prebuild.py")
-
-with open("include/pocketpy/opcodes.h", "rt", encoding='utf-8') as f:
-	OPCODES_TEXT = '\n' + f.read() + '\n'
-
-pipeline = [
-	["config.h", "common.h", "memory.h", "vector.h", "str.h", "tuplelist.h", "namedict.h", "error.h", "lexer.h"],
-	["obj.h", "dict.h", "codeobject.h", "frame.h"],
-	["gc.h", "vm.h", "ceval.h", "expr.h", "compiler.h", "repl.h"],
-	["_generated.h", "cffi.h", "iter.h", "base64.h", "random.h", "re.h", "linalg.h", "easing.h", "io.h"],
-	["export.h", "pocketpy.h"]
-]
-
-copied = set()
-text = ""
-
 import re
 import shutil
 import os
 import sys
 import time
+from typing import List, Dict
 
-if os.path.exists("amalgamated"):
-	shutil.rmtree("amalgamated")
+assert os.system("python prebuild.py") == 0
+
+ROOT = 'include/pocketpy'
+PUBLIC_HEADERS = ['config.h', 'export.h', 'linalg.h', 'pocketpy.h']
+
+COPYRIGHT = '''/*
+ *  Copyright (c) 2024 blueloveTH
+ *  Distributed Under The MIT License
+ *  https://github.com/pocketpy/pocketpy
+ */
+ '''
+
+def read_file(path):
+	with open(path, 'rt', encoding='utf-8') as f:
+		return f.read()
+
+def write_file(path, content):
+	with open(path, 'wt', encoding='utf-8', newline='\n') as f:
+		f.write(content)
+	
+if os.path.exists('amalgamated'):
+	shutil.rmtree('amalgamated')
 	time.sleep(0.5)
-os.mkdir("amalgamated")
 
-def remove_copied_include(text):
-	text = text.replace("#pragma once", "")
+os.mkdir('amalgamated')
+
+class Header:
+	path: str
+	content: str		# header source
+	dependencies: List[str]
+
+	def __init__(self, path: str):
+		self.path = path
+		self.dependencies = []
+		self.content = read_file(f'{ROOT}/{path}')
+
+		# process raw content and get dependencies
+		self.content = self.content.replace('#pragma once', '')
+		def _replace(m):
+			path = m.group(1)
+			if path.startswith('xmacros/'):
+				return read_file(f'{ROOT}/{path}') + '\n'
+			if path in PUBLIC_HEADERS:
+				return ''	# remove include
+			if path != self.path:
+				self.dependencies.append(path)
+			return ''	# remove include
+		
+		self.content = re.sub(
+			r'#include\s+"pocketpy/(.+)"\s*',
+			_replace,
+			self.content
+		)
+
+	def __repr__(self):
+		return f'Header({self.path!r}, dependencies={self.dependencies})'
+	
+	def text(self):
+		return f'// {self.path}\n{self.content}\n'
+
+
+headers: Dict[str, Header] = {}
+
+for entry in os.listdir(ROOT):
+	if os.path.isdir(f'{ROOT}/{entry}'):
+		if entry == 'xmacros' or entry in PUBLIC_HEADERS:
+			continue
+		files = os.listdir(f'{ROOT}/{entry}')
+		for file in sorted(files):
+			assert file.endswith('.h')
+			if entry in PUBLIC_HEADERS:
+				continue
+			headers[f'{entry}/{file}'] = Header(f'{entry}/{file}')
+
+def merge_c_files():
+	c_files = [COPYRIGHT, '\n', '#include "pocketpy.h"', '\n']
+
+	# merge internal headers
+	internal_h = []
+	while True:
+		for h in headers.values():
+			if not h.dependencies:
+				break
+		else:
+			if headers:
+				print(headers)
+				raise RuntimeError("Circular dependencies detected")
+			break
+		# print(h.path)
+		internal_h.append(h.text())
+		del headers[h.path]
+		for h2 in headers.values():
+			h2.dependencies = [d for d in h2.dependencies if d != h.path]
+
+	c_files.extend(internal_h)
 
 	def _replace(m):
-		key = m.group(1)
-		if key.startswith("pocketpy/"):
-			key = key[9:]
-		if key == "user_config.h":
-			return m.group(0)
-		if key == "opcodes.h":
-			return OPCODES_TEXT
-		assert key in copied, f"include {key} not found"
-		return ""
+		path = m.group(1)
+		if path.startswith('xmacros/'):
+			return read_file(f'{ROOT}/{path}') + '\n'
+		return ''	# remove include
 
-	text = re.sub(
-		r'#include\s+"(.+)"\s*',
-		_replace,
-		text
-	)
-	return text
+	for root, _, files in os.walk('src/'):
+		for file in files:
+			if file.endswith('.c'):
+				path = os.path.join(root, file)
+				c_files.append(f'// {path}\n')
+				content = read_file(path)
+				content = re.sub(
+					r'#include\s+"pocketpy/(.+)"\s*',
+					_replace,
+					content,
+				)
+				c_files.append(content)
+				c_files.append('\n')
+	return ''.join(c_files)
 
-for seq in pipeline:
-	for j in seq:
-		print(j)
-		with open("include/pocketpy/"+j, "rt", encoding='utf-8') as f:
-			text += remove_copied_include(f.read()) + '\n'
-			copied.add(j)
-		j = j.replace(".h", ".cpp")
-		if os.path.exists("src/"+j):
-			with open("src/"+j, "rt", encoding='utf-8') as f:
-				text += remove_copied_include(f.read()) + '\n'
-				copied.add(j)
+def merge_h_files():
+	h_files = [COPYRIGHT, '#pragma once']
 
-with open("amalgamated/pocketpy.h", "wt", encoding='utf-8') as f:
-	final_text = \
-r'''/*
- *  Copyright (c) 2023 blueloveTH
- *  Distributed Under The MIT License
- *  https://github.com/blueloveTH/pocketpy
- */
+	def _replace(m):
+		path = m.group(1)
+		if path.startswith('xmacros/'):
+			return read_file(f'{ROOT}/{path}') + '\n'
+		return ''	# remove include
+	
+	for path in PUBLIC_HEADERS:
+		content = read_file(f'{ROOT}/{path}')
+		content = content.replace('#pragma once', '')
+		content = re.sub(
+					r'#include\s+"pocketpy/(.+)"\s*',
+					_replace,
+					content,
+				)
+		h_files.append(content)
+	return '\n'.join(h_files)
 
-#ifndef POCKETPY_H
-#define POCKETPY_H
-''' + text + '\n#endif // POCKETPY_H'
-	f.write(final_text)
 
-shutil.copy("src2/main.cpp", "amalgamated/main.cpp")
-with open("amalgamated/main.cpp", "rt", encoding='utf-8') as f:
-	text = f.read()
-text = text.replace('#include "pocketpy/pocketpy.h"', '#include "pocketpy.h"')
-with open("amalgamated/main.cpp", "wt", encoding='utf-8') as f:
-	f.write(text)
+write_file('amalgamated/pocketpy.c', merge_c_files())
+write_file('amalgamated/pocketpy.h', merge_h_files())
+
+shutil.copy("src2/main.c", "amalgamated/main.c")
 
 if sys.platform in ['linux', 'darwin']:
-	ok = os.system("clang++ -o pocketpy amalgamated/main.cpp --std=c++17 -stdlib=libc++")
+	ok = os.system("clang -o main amalgamated/pocketpy.c amalgamated/main.c -O1 --std=c11 -lm -ldl")
 	if ok == 0:
 		print("Test build success!")
-		os.remove("pocketpy")
 
 print("amalgamated/pocketpy.h")
 
-content = []
-for i in ["include/pocketpy/export.h", "c_bindings/pocketpy_c.h", "c_bindings/pocketpy_c.cpp"]:
-	with open(i, "rt", encoding='utf-8') as g:
-		content.append(g.read())
-
-with open("amalgamated/pocketpy.cpp", "wt", encoding='utf-8') as f:
-	content = '\n\n'.join(content)
-	content = content.replace('#include "pocketpy/export.h"', '')
-	content = content.replace('#include "pocketpy_c.h"', '')
-	f.write(content)
-
-
-shutil.copy("amalgamated/pocketpy.h", "plugins/flutter/src/pocketpy.h")
-shutil.copy("amalgamated/pocketpy.cpp", "plugins/flutter/src/pocketpy.cpp")
-
-shutil.copy("amalgamated/pocketpy.h", "plugins/macos/pocketpy/pocketpy.h")
-shutil.copy("amalgamated/pocketpy.cpp", "plugins/macos/pocketpy/pocketpy.cpp")
-
-# unity plugin
-unity_ios_root = 'plugins/unity/PocketPyUnityPlugin/Assets/PocketPython/Plugins/iOS'
-if os.path.exists(unity_ios_root):
-	shutil.copy("amalgamated/pocketpy.h", unity_ios_root)
-	shutil.copy("amalgamated/pocketpy.cpp", unity_ios_root)
-
-
+shutil.copy("amalgamated/pocketpy.h", "plugins/flutter/pocketpy/src/pocketpy.h")
+shutil.copy("amalgamated/pocketpy.c", "plugins/flutter/pocketpy/src/pocketpy.c")

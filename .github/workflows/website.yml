@@ -3,24 +3,30 @@ name: website
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     ###################################################
     - uses: actions/setup-node@v3.1.1
     - name: Retype build
       run: |
+        python scripts/gen_docs.py
         cd docs
-        npm install retypeapp --global
+        npm install retypeapp -g
         retype build
     ###################################################
     - name: Setup emsdk
       uses: mymindstorm/setup-emsdk@v12
       with:
-        version: 3.1.25
+        version: latest
         actions-cache-folder: 'emsdk-cache'
     - name: Compile
       run: |
@@ -33,3 +39,4 @@ jobs:
         build_dir: docs/.retype
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      if: github.ref == 'refs/heads/main'

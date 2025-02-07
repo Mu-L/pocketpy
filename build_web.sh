@@ -1,7 +1,14 @@
-python3 prebuild.py
+set -e
+
+python prebuild.py
 
 rm -rf web/lib
 mkdir web/lib
 
-SRC=$(find src/ -name "*.cpp")
-em++ $SRC -Iinclude/ -fno-rtti -fexceptions -O3 -sEXPORTED_FUNCTIONS=_pkpy_new_repl,_pkpy_repl_input,_pkpy_new_vm -sEXPORTED_RUNTIME_METHODS=ccall -o web/lib/pocketpy.js
+SRC=$(find src/ -name "*.c")
+
+emcc $SRC -Iinclude/ -s -Os \
+    -sEXPORTED_FUNCTIONS=_py_initialize,_py_exec,_py_finalize,_py_printexc,_py_clearexc \
+    -sEXPORTED_RUNTIME_METHODS=ccall \
+    -sALLOW_MEMORY_GROWTH=1 \
+    -o web/lib/pocketpy.js

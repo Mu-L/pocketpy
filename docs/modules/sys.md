@@ -7,6 +7,16 @@ label: sys
 
 The version of pkpy.
 
-### `sys._repl()`
+### `sys.platform`
 
-Get a REPL for this vm. Use its `input` method to feed strings to the REPL.
+May be one of:
++ `win32`
++ `linux`
++ `darwin`
++ `android`
++ `ios`
++ `emscripten`
+
+### `sys.argv`
+
+The command line arguments. Set by `py_sys_setargv`.

@@ -5,10 +5,10 @@ label: Welcome
 
 # Welcome to pocketpy
 
-pkpy is a lightweight(~10000 LOC) Python interpreter for game scripting, built on C++17 with STL.
-
-It aims to be an alternative to lua for game scripting, with elegant syntax, powerful features and competitive performance.
-pkpy is extremely easy to embed via a single header file `pocketpy.h`, without external dependencies.
+pocketpy is a portable Python 3.x interpreter, written in C11.
+It aims to be an alternative to Lua for game scripting, with elegant syntax, powerful features and competitive performance.
+pocketpy has no dependencies other than the C standard library, which can be easily integrated into your C/C++ project.
+Developers are able to write Python bindings via C-API or pybind11 compatible interfaces.
 
 ## What it looks like
 
@@ -26,10 +26,37 @@ print(primes)
 # [2, 3, 5, 7, 11, 13, 17, 19]
 ```
 
-## Unity plugin
+## Supported platforms
 
-If you are working with [Unity Engine](https://unity.com/), you can download our plugin [PocketPython](https://assetstore.unity.com/packages/tools/visual-scripting/pocketpy-241120) on the Asset Store.
+pkpy should work on any platform with a C11 compiler.
+These platforms are officially tested.
 
-## Sponsor me
+> C99 compilers may also work currently according to users' feedback.
 
-You can sponsor me via [Github Sponsors](https://github.com/sponsors/blueloveTH).
++ Windows 64-bit
++ Linux 64-bit / 32-bit
++ macOS 64-bit
++ Android 64-bit / 32-bit
++ iOS 64-bit
++ Emscripten 32-bit
++ Raspberry Pi OS 64-bit
+
+## Star the repo
+
+If you find pkpy useful, consider [star this repository](https://github.com/blueloveth/pocketpy) (●'◡'●)
+
+## Sponsor this project
+
+You can sponsor this project via these ways.
+
++ [Github Sponsors](https://github.com/sponsors/blueloveTH)
++ [Buy me a coffee](https://www.buymeacoffee.com/blueloveth)
+
+Your sponsorship will help us develop pkpy continuously.
+
+## Upgrade to v2.0
+
+pkpy v2.0 is a C11 project instead of C++17. All your existing code for v1.x won't work anymore.
+
+We provide two API sets for v2.0, C-API and pybind11 API (C\+\+17). If you are a C user, use the C-API. If you are a C\+\+ user, use the pybind11 API.
+

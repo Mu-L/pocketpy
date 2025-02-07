@@ -1,132 +1,207 @@
 name: build
-on: [push, pull_request]
+
+on:
+  push:
+    paths-ignore:
+      - 'docs/**'
+      - 'web/**'
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'web/**'
+      - '**.md'
 jobs:
-  build_win:
+  build_win32_amalgamated:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+    - uses: ilammy/msvc-dev-cmd@v1
+    - name: Compile
+      shell: powershell
+      run: |
+        python amalgamate.py
+        cd amalgamated
+        cl.exe /std:c11 /utf-8 /Ox /I. pocketpy.c main.c /link /out:pkpy.exe
+  build_win32:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
     - uses: ilammy/msvc-dev-cmd@v1
     - name: Compile
       shell: bash
       run: |
-        mkdir -p output/windows/x86_64
-        mkdir build
-        cd build
-        cmake ..
-        cmake --build . --config Release
-        cmake .. -DPK_BUILD_SHARED_LIB=1
-        cmake --build . --config Release
-        cp Release/pocketpy.exe ../output/windows/x86_64
-        cp Release/pocketpy.dll ../output/windows/x86_64
-        cp Release/pocketpy.exe ../
-    - uses: actions/upload-artifact@v3
+        mkdir -p output/x86_64
+        python cmake_build.py
+        cp main.exe output/x86_64
+        cp pocketpy.dll output/x86_64
+    - uses: actions/upload-artifact@v4
       with:
+        name: windows
         path: output
     - name: Unit Test
-      run: python3 scripts/run_tests.py
+      run: python scripts/run_tests.py
     - name: Benchmark
-      run: python3 scripts/run_tests.py benchmark
+      run: python scripts/run_tests.py benchmark
   build_linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
     - name: Setup Clang
       uses: egor-tensin/setup-clang@v1
       with:
         version: 15
         platform: x64
-    - name: Install libc++
-      run: sudo apt-get install -y libc++-15-dev libc++1-15 libc++abi-15-dev libc++abi1-15 libclang-rt-15-dev
+    - name: Install dependencies
+      run: sudo apt-get install -y libclang-rt-15-dev
     - name: Unit Test with Coverage
       run: bash run_tests.sh
     - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         directory: .coverage
-    - name: Compile
+      if: github.ref == 'refs/heads/main'
+    - name: Compile and Test
       run: |
-        export CXX=clang++
-        export CC=clang
-        mkdir -p output/linux/x86_64
-        mkdir build
-        cd build
-        cmake ..
-        cmake --build . --config Release
-        cmake .. -DPK_BUILD_SHARED_LIB=1
-        cmake --build . --config Release
-        cp pocketpy ../output/linux/x86_64
-        cp libpocketpy.so ../output/linux/x86_64
-        cp pocketpy ../
-    - uses: actions/upload-artifact@v3
+        mkdir -p output/x86_64
+        python cmake_build.py
+        python scripts/run_tests.py
+        cp main output/x86_64
+        cp libpocketpy.so output/x86_64
+      env:
+        CC: clang
+    - uses: actions/upload-artifact@v4
       with:
+        name: linux
         path: output
     - name: Benchmark
-      run: python3 scripts/run_tests.py benchmark
-    # - name: GCC Build Test
-    #   run: g++ -o pocketpy --std=c++17 src/main.cpp
-    - name: C Binding Test
-      run: bash run_c_binding_test.sh
-  build_macos:
+      run: python scripts/run_tests.py benchmark
+  build_linux_x86:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Alpine Linux for aarch64
+        uses: jirutka/setup-alpine@v1
+        with:
+          arch: x86
+          packages: gcc g++ make cmake libc-dev linux-headers python3
+      - name: Build and Test
+        run: |
+          uname -m
+          python cmake_build.py
+          python scripts/run_tests.py
+          python scripts/run_tests.py benchmark
+        shell: alpine.sh --root {0}
+  build_darwin:
       runs-on: macos-latest
       steps:
-      - uses: actions/checkout@v3
-      - run: |
-          python3 amalgamate.py
-          cd plugins/macos/pocketpy
-          mkdir -p output/macos
-          xcodebuild clean build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-          cp -r build/Release/pocketpy.bundle output/macos
-      - uses: actions/upload-artifact@v3
+      - uses: actions/checkout@v4
         with:
-          path: plugins/macos/pocketpy/output
+          submodules: true
+      - name: Compile and Test
+        run: |
+          python cmake_build.py
+          python scripts/run_tests.py
+      - name: Benchmark
+        run: python scripts/run_tests.py benchmark
+      - name: Test Amalgamated Build
+        run: python amalgamate.py
   build_android:
       runs-on: ubuntu-latest
       steps:
-      - uses: actions/checkout@v3
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@v4
         with:
-          flutter-version: '3.3.0'
-          channel: 'stable'
-          cache: true
-      - run: flutter --version
-      - name: Compile
+          submodules: true
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r23
+          local-cache: false
+          add-to-path: false
+      - name: Compile Shared Library
         run: |
-          python3 amalgamate.py
-          cd plugins/flutter/example
-          flutter build apk --split-debug-info=.debug-info --split-per-abi
-          cd build/app/outputs/flutter-apk
-          mkdir -p output/android/arm64-v8a
-          mkdir -p output/android/armeabi-v7a
-          mkdir -p output/android/x86_64
-          unzip -q app-arm64-v8a-release.apk -d tmp
-          mv tmp/lib/arm64-v8a/libpocketpy.so output/android/arm64-v8a/libpocketpy.so
-          rm -rf tmp
-          unzip -q app-armeabi-v7a-release.apk -d tmp
-          mv tmp/lib/armeabi-v7a/libpocketpy.so output/android/armeabi-v7a/libpocketpy.so
-          rm -rf tmp
-          unzip -q app-x86_64-release.apk -d tmp
-          mv tmp/lib/x86_64/libpocketpy.so output/android/x86_64/libpocketpy.so
-          rm -rf tmp
-      - uses: actions/upload-artifact@v3
+          bash build_android.sh arm64-v8a
+          bash build_android.sh armeabi-v7a
+          bash build_android.sh x86_64
+
+          mkdir -p output/arm64-v8a
+          mkdir -p output/armeabi-v7a
+          mkdir -p output/x86_64
+
+          cp build/android/arm64-v8a/libpocketpy.so output/arm64-v8a
+          cp build/android/armeabi-v7a/libpocketpy.so output/armeabi-v7a
+          cp build/android/x86_64/libpocketpy.so output/x86_64
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - uses: actions/upload-artifact@v4
         with:
-          path: plugins/flutter/example/build/app/outputs/flutter-apk/output
-  # build_web:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #   - uses: actions/checkout@v3
-  #   - name: Setup emsdk
-  #     uses: mymindstorm/setup-emsdk@v12
-  #     with:
-  #       version: 3.1.25
-  #       actions-cache-folder: 'emsdk-cache'
-  #   - name: Verify emsdk
-  #     run: emcc -v
-  #   - name: Compile
-  #     run: |
-  #       mkdir -p output/web/lib
-  #       python3 build.py web
-  #       cp web/lib/* output/web/lib
-  #   - uses: actions/upload-artifact@v3
-  #     with:
-  #       path: output
+          name: android
+          path: output
+  build_ios:
+      runs-on: macos-latest
+      steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Compile Frameworks
+        run: |
+          git clone https://github.com/leetal/ios-cmake --depth 1 ~/ios-cmake
+          bash build_ios.sh
+          mkdir -p output
+          cp -r build/pocketpy.xcframework output/pocketpy.xcframework
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: output
+
+  merge:
+      runs-on: ubuntu-latest
+      needs: [ build_win32, build_linux, build_darwin, build_android, build_ios ]
+      steps:
+      - name: "Create output directory"
+        run: "mkdir $GITHUB_WORKSPACE/output"
+        
+      - name: "Merge win32"
+        uses: actions/download-artifact@v4.1.7
+        with:
+          name: windows
+          path: $GITHUB_WORKSPACE/output/windows
+
+      - name: "Merge linux"
+        uses: actions/download-artifact@v4.1.7
+        with:
+          name: linux
+          path: $GITHUB_WORKSPACE/output/linux
+
+      # - name: "Merge darwin"
+      #   uses: actions/download-artifact@v4.1.7
+      #   with:
+      #     name: macos
+      #     path: $GITHUB_WORKSPACE/output/macos
+
+      - name: "Merge android"
+        uses: actions/download-artifact@v4.1.7
+        with:
+          name: android
+          path: $GITHUB_WORKSPACE/output/android
+          
+      - name: "Merge ios"
+        uses: actions/download-artifact@v4.1.7
+        with:
+          name: ios
+          path: $GITHUB_WORKSPACE/output/ios
+
+      - name: "Upload merged artifact"
+        uses: actions/upload-artifact@v4.3.3
+        with:
+          name: all-in-one
+          path: $GITHUB_WORKSPACE/output

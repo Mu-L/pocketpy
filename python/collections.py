@@ -1,113 +1,7 @@
-class _LinkedListNode:
-    def __init__(self, prev, next, value) -> None:
-        self.prev = prev
-        self.next = next
-        self.value = value
+from typing import TypeVar, Iterable
 
-class deque:
-    def __init__(self, iterable=None) -> None:
-        self.head = _LinkedListNode(None, None, None)
-        self.tail = _LinkedListNode(None, None, None)
-        self.head.next = self.tail
-        self.tail.prev = self.head
-        self.size = 0
-        if iterable is not None:
-            for value in iterable:
-                self.append(value)
-
-    def __getitem__(self, index):
-        assert 0 <= index < len(self)
-        node = self.head.next
-        for _ in range(index):
-            node = node.next
-        return node.value
-    
-    def __setitem__(self, index, value):
-        assert 0 <= index < len(self)
-        node = self.head.next
-        for _ in range(index):
-            node = node.next
-        node.value = value
-
-    def __delitem__(self, index):
-        assert 0 <= index < len(self)
-        node = self.head.next
-        for _ in range(index):
-            node = node.next
-        node.prev.next = node.next
-        node.next.prev = node.prev
-        self.size -= 1
-
-    def clear(self):
-        self.head.next = self.tail
-        self.tail.prev = self.head
-        self.size = 0
-
-    def extend(self, iterable):
-        for value in iterable:
-            self.append(value)
-
-    def append(self, value):
-        node = _LinkedListNode(self.tail.prev, self.tail, value)
-        self.tail.prev.next = node
-        self.tail.prev = node
-        self.size += 1
-    
-    def appendleft(self, value):
-        node = _LinkedListNode(self.head, self.head.next, value)
-        self.head.next.prev = node
-        self.head.next = node
-        self.size += 1
-
-    def pop(self):
-        assert self.size > 0
-        node = self.tail.prev
-        node.prev.next = self.tail
-        self.tail.prev = node.prev
-        self.size -= 1
-        return node.value
-    
-    def popleft(self):
-        assert self.size > 0
-        node = self.head.next
-        node.next.prev = self.head
-        self.head.next = node.next
-        self.size -= 1
-        return node.value
-    
-    def copy(self):
-        new_list = deque()
-        for value in self:
-            new_list.append(value)
-        return new_list
-    
-    def __len__(self):
-        return self.size
-    
-    def __iter__(self):
-        node = self.head.next
-        while node is not self.tail:
-            yield node.value
-            node = node.next
-
-    def __repr__(self) -> str:
-        a = list(self)
-        return f"deque({a})"
-    
-    def __eq__(self, __o: object) -> bool:
-        if not isinstance(__o, deque):
-            return False
-        if len(self) != len(__o):
-            return False
-        t1, t2 = self.head.next, __o.head.next
-        while t1 is not self.tail:
-            if t1.value != t2.value:
-                return False
-            t1, t2 = t1.next, t2.next
-        return True
-
-def Counter(iterable):
-    a = {}
+def Counter[T](iterable: Iterable[T]):
+    a: dict[T, int] = {}
     for x in iterable:
         if x in a:
             a[x] += 1
@@ -115,46 +9,140 @@ def Counter(iterable):
             a[x] = 1
     return a
 
-class defaultdict:
-    def __init__(self, default_factory) -> None:
-        self.default_factory = default_factory
-        self._a = {}
 
-    def __getitem__(self, key):
-        if key not in self._a:
-            self._a[key] = self.default_factory()
-        return self._a[key]
-        
-    def __setitem__(self, key, value):
-        self._a[key] = value
+class defaultdict(dict):
+    def __init__(self, default_factory, *args):
+        super().__init__(*args)
+        self.default_factory = default_factory
+
+    def __missing__(self, key):
+        self[key] = self.default_factory()
+        return self[key]
 
     def __repr__(self) -> str:
-        return f"defaultdict({self.default_factory}, {self._a})"
+        return f"defaultdict({self.default_factory}, {super().__repr__()})"
+
+    def copy(self):
+        return defaultdict(self.default_factory, self)
+
+
+class deque[T]:
+    _data: list[T]
+    _head: int
+    _tail: int
+    _capacity: int
+
+    def __init__(self, iterable: Iterable[T] = None):
+        self._data = [None] * 8 # type: ignore
+        self._head = 0
+        self._tail = 0
+        self._capacity = len(self._data)
+
+        if iterable is not None:
+            self.extend(iterable)
+
+    def __resize_2x(self):
+        backup = list(self)
+        self._capacity *= 2
+        self._head = 0
+        self._tail = len(backup)
+        self._data.clear()
+        self._data.extend(backup)
+        self._data.extend([None] * (self._capacity - len(backup)))
+
+    def append(self, x: T):
+        self._data[self._tail] = x
+        self._tail = (self._tail + 1) % self._capacity
+        if (self._tail + 1) % self._capacity == self._head:
+            self.__resize_2x()
+
+    def appendleft(self, x: T):
+        self._head = (self._head - 1) % self._capacity
+        self._data[self._head] = x
+        if (self._tail + 1) % self._capacity == self._head:
+            self.__resize_2x()
+
+    def copy(self):
+        return deque(self)
     
-    def __eq__(self, __o: object) -> bool:
-        if not isinstance(__o, defaultdict):
-            return False
-        if self.default_factory != __o.default_factory:
-            return False
-        return self._a == __o._a
+    def count(self, x: T) -> int:
+        n = 0
+        for item in self:
+            if item == x:
+                n += 1
+        return n
+    
+    def extend(self, iterable: Iterable[T]):
+        for x in iterable:
+            self.append(x)
+
+    def extendleft(self, iterable: Iterable[T]):
+        for x in iterable:
+            self.appendleft(x)
+    
+    def pop(self) -> T:
+        if self._head == self._tail:
+            raise IndexError("pop from an empty deque")
+        self._tail = (self._tail - 1) % self._capacity
+        return self._data[self._tail]
+    
+    def popleft(self) -> T:
+        if self._head == self._tail:
+            raise IndexError("pop from an empty deque")
+        x = self._data[self._head]
+        self._head = (self._head + 1) % self._capacity
+        return x
+    
+    def clear(self):
+        i = self._head
+        while i != self._tail:
+            self._data[i] = None # type: ignore
+            i = (i + 1) % self._capacity
+        self._head = 0
+        self._tail = 0
+
+    def rotate(self, n: int = 1):
+        if len(self) == 0:
+            return
+        if n > 0:
+            n = n % len(self)
+            for _ in range(n):
+                self.appendleft(self.pop())
+        elif n < 0:
+            n = -n % len(self)
+            for _ in range(n):
+                self.append(self.popleft())
+
+    def __len__(self) -> int:
+        return (self._tail - self._head) % self._capacity
+
+    def __contains__(self, x: object) -> bool:
+        for item in self:
+            if item == x:
+                return True
+        return False
     
     def __iter__(self):
-        return iter(self._a)
+        i = self._head
+        while i != self._tail:
+            yield self._data[i]
+            i = (i + 1) % self._capacity
 
-    def __contains__(self, key):
-        return key in self._a
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, deque):
+            return NotImplemented
+        if len(self) != len(other):
+            return False
+        for x, y in zip(self, other):
+            if x != y:
+                return False
+        return True
     
-    def __len__(self):
-        return len(self._a)
+    def __ne__(self, other: object) -> bool:
+        if not isinstance(other, deque):
+            return NotImplemented
+        return not self == other
+    
+    def __repr__(self) -> str:
+        return f"deque({list(self)!r})"
 
-    def keys(self):
-        return self._a.keys()
-    
-    def values(self):
-        return self._a.values()
-    
-    def items(self):
-        return self._a.items()
-
-    def pop(self, key):
-        return self._a.pop(key)
